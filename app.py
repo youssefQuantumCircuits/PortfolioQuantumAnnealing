@@ -5,18 +5,14 @@ import requests
 from datetime import datetime, timedelta
 from dimod import SimulatedAnnealingSampler
 
-st.set_page_config(page_title="📊 Alpha Vantage Portfolio Optimizer", layout="centered")
-st.title("📊 Optimize Portfolio using Alpha Vantage")
-st.markdown("This app uses **Alpha Vantage** to fetch real-time market data and optimize a portfolio using simulated annealing.")
+st.set_page_config(page_title="🔍 Alpha Vantage Debug Optimizer", layout="centered")
+st.title("🔍 Debug Alpha Vantage Portfolio Optimizer")
 
-# Setup API key (user must provide their own)
-api_key = st.text_input("Enter your Alpha Vantage API Key:", type="password")
+# Fixed API key for debugging
+api_key = "R4QPH9AXO2ZZA6UO"
+
 tickers_input = st.text_area("Enter up to 10 tickers (comma-separated)", "AAPL,MSFT,GOOGL,AMZN,NVDA", height=100)
 ticker_list = [ticker.strip().upper() for ticker in tickers_input.split(",") if ticker.strip()]
-
-if not api_key:
-    st.warning("Please enter your Alpha Vantage API key.")
-    st.stop()
 
 if not 2 <= len(ticker_list) <= 10:
     st.warning("Please enter between 2 and 10 tickers.")
@@ -25,9 +21,9 @@ if not 2 <= len(ticker_list) <= 10:
 risk_aversion = st.slider("Risk Aversion", 0.0, 1.0, 0.5)
 top_k = st.slider("Top-k Assets to Select", 2, len(ticker_list), min(5, len(ticker_list)))
 
-# Fetch historical data (last 100 trading days)
-def fetch_alpha_vantage_data(symbol, api_key):
-    url = f"https://www.alphavantage.co/query"
+# Fetch historical data (compact = 100 days)
+def fetch_alpha_vantage_data(symbol):
+    url = "https://www.alphavantage.co/query"
     params = {
         "function": "TIME_SERIES_DAILY_ADJUSTED",
         "symbol": symbol,
@@ -36,22 +32,30 @@ def fetch_alpha_vantage_data(symbol, api_key):
     }
     r = requests.get(url, params=params)
     try:
-        data = r.json()["Time Series (Daily)"]
-        df = pd.DataFrame(data).T
-        df = df.rename(columns={"5. adjusted close": symbol})
-        df[symbol] = df[symbol].astype(float)
-        df.index = pd.to_datetime(df.index)
-        return df[[symbol]]
-    except Exception:
+        response = r.json()
+        st.markdown(f"### 🔎 Response for `{symbol}`:")
+        st.code(str(response)[:1000] + "..." if len(str(response)) > 1000 else str(response))
+
+        if "Time Series (Daily)" in response:
+            data = response["Time Series (Daily)"]
+            df = pd.DataFrame(data).T
+            df = df.rename(columns={"5. adjusted close": symbol})
+            df[symbol] = df[symbol].astype(float)
+            df.index = pd.to_datetime(df.index)
+            return df[[symbol]]
+        else:
+            return None
+    except Exception as e:
+        st.warning(f"Failed to fetch {symbol}: {e}")
         return None
 
 # Combine all valid data
-st.info("📥 Fetching data from Alpha Vantage...")
+st.info("📥 Fetching and debugging data from Alpha Vantage...")
 valid_tickers = []
 price_data = pd.DataFrame()
 
 for ticker in ticker_list:
-    df = fetch_alpha_vantage_data(ticker, api_key)
+    df = fetch_alpha_vantage_data(ticker)
     if df is not None and len(df.columns) == 1:
         valid_tickers.append(ticker)
         if price_data.empty:
@@ -80,7 +84,6 @@ for i in range(n):
         else:
             Q[(i, j)] = risk_aversion * cov_matrix[i][j]
 
-# Top-k constraint
 penalty = 4.0
 for i in range(n):
     Q[(i, i)] += penalty * (1 - 2 * top_k)
