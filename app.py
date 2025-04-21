@@ -4,11 +4,13 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
 from dimod import SimulatedAnnealingSampler
+import seaborn as sns
+import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="📊 yfinance Optimizer (Fallback Safe)", layout="centered")
-st.title("📊 yfinance Portfolio Optimizer (with Fallback to Close)")
+st.set_page_config(page_title="📊 Enhanced Portfolio Optimizer", layout="centered")
+st.title("📊 yfinance Portfolio Optimizer (12-Month, Benchmark & Heatmap)")
 
-st.markdown("This app uses **yfinance** to fetch stock data (VPN required) and optimizes a portfolio using simulated annealing.")
+st.markdown("This app uses **yfinance** to fetch stock data, compares to a benchmark (SPY), and shows a correlation heatmap.")
 
 tickers_input = st.text_area("Enter tickers (comma-separated, e.g., AAPL,MSFT,GOOGL):", "AAPL,MSFT,NVDA,TSLA,GOOGL", height=100)
 tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
@@ -20,45 +22,39 @@ if not 2 <= len(tickers) <= 20:
 top_k = st.slider("Top-k Assets to Select", 2, len(tickers), min(5, len(tickers)))
 risk_aversion = st.slider("Risk Aversion", 0.0, 1.0, 0.5)
 
-st.info("📥 Downloading data using yfinance (last 6 months)...")
+# Fetch yfinance data for 1 year
 end_date = datetime.today()
-start_date = end_date - timedelta(days=180)
-data = yf.download(tickers, start=start_date, end=end_date)
+start_date = end_date - timedelta(days=365)
+raw_data = yf.download(tickers + ['SPY'], start=start_date, end=end_date)
 
-# Display data preview
-st.subheader("🧪 Raw Data Preview")
-st.dataframe(data.head())
-
-# Determine which price column to use
-if isinstance(data.columns, pd.MultiIndex):
-    available_keys = list(data.columns.levels[0])
-    st.code(f"Columns found: {available_keys}")
-
-    if 'Adj Close' in data.columns.levels[0]:
-        data = data['Adj Close']
-        st.success("✅ Using 'Adj Close' prices.")
-    elif 'Close' in data.columns.levels[0]:
-        data = data['Close']
-        st.warning("⚠️ 'Adj Close' not found — using 'Close' instead.")
-    else:
-        st.error("❌ Neither 'Adj Close' nor 'Close' found.")
-        st.stop()
+# Determine price type
+if isinstance(raw_data.columns, pd.MultiIndex):
+    price_type = 'Adj Close' if 'Adj Close' in raw_data.columns.levels[0] else 'Close'
+    data = raw_data[price_type]
 else:
-    st.error("❌ Unexpected data structure. Try again or use fewer tickers.")
-    st.dataframe(data.head())
+    st.error("❌ Data returned is not in MultiIndex format.")
     st.stop()
 
 # Clean and compute returns
 data.dropna(axis=1, how='all', inplace=True)
 returns_df = data.pct_change().dropna()
+benchmark_returns = returns_df['SPY']
+asset_returns = returns_df.drop(columns=['SPY'])
 
-if returns_df.empty or len(returns_df.columns) < top_k:
-    st.error("❌ Not enough valid price data.")
+# Show correlation heatmap
+st.subheader("📊 Correlation Heatmap")
+fig, ax = plt.subplots()
+sns.heatmap(asset_returns.corr(), annot=True, cmap='coolwarm', ax=ax)
+st.pyplot(fig)
+
+# Run optimization
+mean_returns = asset_returns.mean().values
+cov_matrix = asset_returns.cov().values
+tickers = list(asset_returns.columns)
+
+if len(tickers) < top_k:
+    st.error("❌ Not enough valid assets after cleaning.")
     st.stop()
-
-mean_returns = returns_df.mean().values
-cov_matrix = returns_df.cov().values
-tickers = list(returns_df.columns)
 
 n = len(tickers)
 Q = {}
@@ -88,10 +84,18 @@ if st.button("Optimize Portfolio"):
     st.write([tickers[i] for i in selected_indices])
     st.write(f"Sample Energy: `{energy:.4f}`")
 
-    port_return = np.sum([mean_returns[i] for i in selected_indices])
-    port_var = np.sum([cov_matrix[i][j] for i in selected_indices for j in selected_indices])
+    selected_returns = asset_returns[[tickers[i] for i in selected_indices]].mean(axis=1)
+    port_return = selected_returns.mean()
+    port_var = selected_returns.var()
     port_sharpe = port_return / (np.sqrt(port_var) + 1e-6)
 
-    st.metric("📈 Expected Return", f"{port_return:.2%}")
-    st.metric("📉 Expected Risk (Variance)", f"{port_var:.4f}")
-    st.metric("🧠 Sharpe Ratio", f"{port_sharpe:.2f}")
+    # Benchmark comparison
+    benchmark_avg = benchmark_returns.mean()
+    benchmark_std = benchmark_returns.std()
+    benchmark_sharpe = benchmark_avg / (benchmark_std + 1e-6)
+
+    st.metric("📈 Portfolio Expected Return", f"{port_return:.2%}")
+    st.metric("📉 Portfolio Risk (Variance)", f"{port_var:.4f}")
+    st.metric("🧠 Portfolio Sharpe Ratio", f"{port_sharpe:.2f}")
+
+    st.metric("📊 SPY Sharpe Ratio", f"{benchmark_sharpe:.2f}")
