@@ -1,69 +1,52 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import requests
+import investpy
 from datetime import datetime, timedelta
 from dimod import SimulatedAnnealingSampler
 
-st.set_page_config(page_title="📊 Alpha Vantage Free Optimizer", layout="centered")
-st.title("📊 Optimize Portfolio using Alpha Vantage (Free Endpoint)")
+st.set_page_config(page_title="📈 investpy Portfolio Optimizer", layout="centered")
+st.title("📈 Optimize Portfolio using investpy (Free, Local Data)")
 
-api_key = "R4QPH9AXO2ZZA6UO"
+st.markdown("This app fetches historical stock data using [investpy](https://pypi.org/project/investpy/) and optimizes the portfolio using simulated annealing.")
 
-tickers_input = st.text_area("Enter up to 10 tickers (comma-separated)", "AAPL,MSFT,GOOGL,AMZN,NVDA", height=100)
-ticker_list = [ticker.strip().upper() for ticker in tickers_input.split(",") if ticker.strip()]
-
-if not 2 <= len(ticker_list) <= 10:
-    st.warning("Please enter between 2 and 10 tickers.")
-    st.stop()
-
+# User input
+tickers_input = st.text_area("Enter stock names (Investing.com format, comma-separated):", "apple, microsoft, amazon, tesla", height=100)
+tickers_raw = [ticker.strip().lower() for ticker in tickers_input.split(",") if ticker.strip()]
+top_k = st.slider("Top-k Assets to Select", 2, min(10, len(tickers_raw)), min(5, len(tickers_raw)))
 risk_aversion = st.slider("Risk Aversion", 0.0, 1.0, 0.5)
-top_k = st.slider("Top-k Assets to Select", 2, len(ticker_list), min(5, len(ticker_list)))
 
-def fetch_alpha_vantage_data(symbol):
-    url = "https://www.alphavantage.co/query"
-    params = {
-        "function": "TIME_SERIES_DAILY",  # Free tier version
-        "symbol": symbol,
-        "outputsize": "compact",
-        "apikey": api_key
-    }
-    r = requests.get(url, params=params)
+# Fetch data
+def fetch_investpy_data(name):
     try:
-        response = r.json()
-        st.markdown(f"### 🔎 Response for `{symbol}`:")
-        st.code(str(response)[:1000] + "..." if len(str(response)) > 1000 else str(response))
-
-        if "Time Series (Daily)" in response:
-            data = response["Time Series (Daily)"]
-            df = pd.DataFrame(data).T
-            df = df.rename(columns={"4. close": symbol})
-            df[symbol] = df[symbol].astype(float)
-            df.index = pd.to_datetime(df.index)
-            return df[[symbol]]
-        else:
-            return None
+        df = investpy.get_stock_historical_data(stock=name,
+                                                country='united states',
+                                                from_date=(datetime.today() - timedelta(days=180)).strftime('%d/%m/%Y'),
+                                                to_date=datetime.today().strftime('%d/%m/%Y'))
+        df = df[['Close']].rename(columns={"Close": name})
+        return df
     except Exception as e:
-        st.warning(f"Failed to fetch {symbol}: {e}")
+        st.warning(f"❌ Could not fetch `{name}`: {e}")
         return None
 
-st.info("📥 Fetching from Alpha Vantage (free tier)...")
-valid_tickers = []
+st.info("📥 Downloading data using investpy...")
 price_data = pd.DataFrame()
+valid_names = []
 
-for ticker in ticker_list:
-    df = fetch_alpha_vantage_data(ticker)
-    if df is not None and len(df.columns) == 1:
-        valid_tickers.append(ticker)
+for name in tickers_raw:
+    df = fetch_investpy_data(name)
+    if df is not None:
+        valid_names.append(name)
         if price_data.empty:
             price_data = df
         else:
             price_data = price_data.join(df, how="outer")
 
-if len(valid_tickers) < top_k:
-    st.error(f"Only {len(valid_tickers)} valid tickers returned. This is fewer than top_k = {top_k}.")
+if len(valid_names) < top_k:
+    st.error(f"Only {len(valid_names)} valid assets found. This is fewer than top_k = {top_k}.")
     st.stop()
 
+# Process return data
 price_data = price_data.sort_index().dropna()
 returns_df = price_data.pct_change().dropna()
 
@@ -71,6 +54,7 @@ mean_returns = returns_df.mean().values
 cov_matrix = returns_df.cov().values
 tickers = list(returns_df.columns)
 
+# Build QUBO
 n = len(tickers)
 Q = {}
 for i in range(n):
@@ -95,7 +79,7 @@ if st.button("Optimize Portfolio"):
         energy = sampleset.first.energy
 
     st.success("Optimization Complete")
-    st.subheader("📈 Selected Tickers:")
+    st.subheader("📈 Selected Assets:")
     st.write([tickers[i] for i in selected_indices])
     st.write(f"Sample Energy: `{energy:.4f}`")
 
