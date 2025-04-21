@@ -1,5 +1,6 @@
 import streamlit as st
 import numpy as np
+import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
 from dimod import SimulatedAnnealingSampler
@@ -22,10 +23,17 @@ top_k = st.slider("Top-k Assets to Select", 5, min(20, len(ticker_list)), 10)
 # Fetch historical prices (6 months)
 end = datetime.today()
 start = end - timedelta(days=180)
-data = yf.download(ticker_list, start=start, end=end)['Adj Close']
+data = yf.download(ticker_list, start=start, end=end)
+
+# Handle multi-index data
+if isinstance(data.columns, pd.MultiIndex):
+    data = data['Adj Close']
+elif 'Adj Close' in data.columns:
+    data = data[['Adj Close']]
+    data.columns = [ticker_list[0]]
 
 if data.isnull().all().any():
-    st.error("Some tickers failed to download. Please check ticker symbols.")
+    st.error("Some tickers failed to download or returned all NaN data.")
     st.stop()
 
 # Calculate daily returns and summary stats
