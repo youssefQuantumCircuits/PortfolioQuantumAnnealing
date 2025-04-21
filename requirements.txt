@@ -1,3 +1,4 @@
 streamlit
 dimod
 numpy
+yfinance
