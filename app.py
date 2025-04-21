@@ -5,15 +5,21 @@ import investpy
 from datetime import datetime, timedelta
 from dimod import SimulatedAnnealingSampler
 
-st.set_page_config(page_title="📈 investpy Portfolio Optimizer", layout="centered")
-st.title("📈 Optimize Portfolio using investpy (Free, Local Data)")
+st.set_page_config(page_title="📈 investpy Optimizer (Dropdown)", layout="centered")
+st.title("📈 Optimize Portfolio using investpy (Dropdown-Friendly)")
 
-st.markdown("This app fetches historical stock data using [investpy](https://pypi.org/project/investpy/) and optimizes the portfolio using simulated annealing.")
+st.markdown("Select valid US stocks from the dropdown list to optimize your portfolio using simulated annealing.")
 
-# User input
-tickers_input = st.text_area("Enter stock names (Investing.com format, comma-separated):", "apple, microsoft, amazon, tesla", height=100)
-tickers_raw = [ticker.strip().lower() for ticker in tickers_input.split(",") if ticker.strip()]
-top_k = st.slider("Top-k Assets to Select", 2, min(10, len(tickers_raw)), min(5, len(tickers_raw)))
+# Valid investpy US stock names (tested)
+valid_names = [
+    "Apple Inc", "Microsoft Corp", "Amazon.com Inc", "Tesla Inc",
+    "Alphabet A", "Meta Platforms Inc", "Visa Inc",
+    "Coca-Cola Co", "JPMorgan Chase & Co", "NVIDIA Corp"
+]
+
+# Multi-select dropdown
+selected_stocks = st.multiselect("Select stocks to optimize:", valid_names, default=valid_names[:5])
+top_k = st.slider("Top-k Assets to Select", 2, len(selected_stocks), min(5, len(selected_stocks)))
 risk_aversion = st.slider("Risk Aversion", 0.0, 1.0, 0.5)
 
 # Fetch data
@@ -31,19 +37,19 @@ def fetch_investpy_data(name):
 
 st.info("📥 Downloading data using investpy...")
 price_data = pd.DataFrame()
-valid_names = []
+valid_selected = []
 
-for name in tickers_raw:
+for name in selected_stocks:
     df = fetch_investpy_data(name)
     if df is not None:
-        valid_names.append(name)
+        valid_selected.append(name)
         if price_data.empty:
             price_data = df
         else:
             price_data = price_data.join(df, how="outer")
 
-if len(valid_names) < top_k:
-    st.error(f"Only {len(valid_names)} valid assets found. This is fewer than top_k = {top_k}.")
+if len(valid_selected) < top_k:
+    st.error(f"Only {len(valid_selected)} valid assets found. This is fewer than top_k = {top_k}.")
     st.stop()
 
 # Process return data
