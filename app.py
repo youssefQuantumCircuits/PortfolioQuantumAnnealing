@@ -5,10 +5,10 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from dimod import SimulatedAnnealingSampler
 
-st.set_page_config(page_title="📊 yfinance Debug Portfolio Optimizer", layout="centered")
-st.title("📊 yfinance Portfolio Optimizer (with Debug Info)")
+st.set_page_config(page_title="📊 yfinance Optimizer (Fallback Safe)", layout="centered")
+st.title("📊 yfinance Portfolio Optimizer (with Fallback to Close)")
 
-st.markdown("Connected via VPN? Paste tickers and debug Yahoo Finance's response if it fails.")
+st.markdown("This app uses **yfinance** to fetch stock data (VPN required) and optimizes a portfolio using simulated annealing.")
 
 tickers_input = st.text_area("Enter tickers (comma-separated, e.g., AAPL,MSFT,GOOGL):", "AAPL,MSFT,NVDA,TSLA,GOOGL", height=100)
 tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
@@ -25,28 +25,35 @@ end_date = datetime.today()
 start_date = end_date - timedelta(days=180)
 data = yf.download(tickers, start=start_date, end=end_date)
 
-st.subheader("🧪 Raw DataFrame Preview:")
+# Display data preview
+st.subheader("🧪 Raw Data Preview")
 st.dataframe(data.head())
 
-# Extract Adj Close or fallback
+# Determine which price column to use
 if isinstance(data.columns, pd.MultiIndex):
+    available_keys = list(data.columns.levels[0])
+    st.code(f"Columns found: {available_keys}")
+
     if 'Adj Close' in data.columns.levels[0]:
         data = data['Adj Close']
-        st.success("✅ Found and extracted 'Adj Close' data.")
+        st.success("✅ Using 'Adj Close' prices.")
+    elif 'Close' in data.columns.levels[0]:
+        data = data['Close']
+        st.warning("⚠️ 'Adj Close' not found — using 'Close' instead.")
     else:
-        st.warning("⚠️ 'Adj Close' not found — showing top-level column structure:")
-        st.code(str(data.columns.levels[0]))
+        st.error("❌ Neither 'Adj Close' nor 'Close' found.")
         st.stop()
 else:
-    st.error("❌ Data structure was not MultiIndex. Please check your VPN or ticker input.")
+    st.error("❌ Unexpected data structure. Try again or use fewer tickers.")
     st.dataframe(data.head())
     st.stop()
 
+# Clean and compute returns
 data.dropna(axis=1, how='all', inplace=True)
 returns_df = data.pct_change().dropna()
 
 if returns_df.empty or len(returns_df.columns) < top_k:
-    st.error("❌ Not enough valid return data.")
+    st.error("❌ Not enough valid price data.")
     st.stop()
 
 mean_returns = returns_df.mean().values
