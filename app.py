@@ -5,10 +5,9 @@ import requests
 from datetime import datetime, timedelta
 from dimod import SimulatedAnnealingSampler
 
-st.set_page_config(page_title="🔍 Alpha Vantage Debug Optimizer", layout="centered")
-st.title("🔍 Debug Alpha Vantage Portfolio Optimizer")
+st.set_page_config(page_title="📊 Alpha Vantage Free Optimizer", layout="centered")
+st.title("📊 Optimize Portfolio using Alpha Vantage (Free Endpoint)")
 
-# Fixed API key for debugging
 api_key = "R4QPH9AXO2ZZA6UO"
 
 tickers_input = st.text_area("Enter up to 10 tickers (comma-separated)", "AAPL,MSFT,GOOGL,AMZN,NVDA", height=100)
@@ -21,11 +20,10 @@ if not 2 <= len(ticker_list) <= 10:
 risk_aversion = st.slider("Risk Aversion", 0.0, 1.0, 0.5)
 top_k = st.slider("Top-k Assets to Select", 2, len(ticker_list), min(5, len(ticker_list)))
 
-# Fetch historical data (compact = 100 days)
 def fetch_alpha_vantage_data(symbol):
     url = "https://www.alphavantage.co/query"
     params = {
-        "function": "TIME_SERIES_DAILY_ADJUSTED",
+        "function": "TIME_SERIES_DAILY",  # Free tier version
         "symbol": symbol,
         "outputsize": "compact",
         "apikey": api_key
@@ -39,7 +37,7 @@ def fetch_alpha_vantage_data(symbol):
         if "Time Series (Daily)" in response:
             data = response["Time Series (Daily)"]
             df = pd.DataFrame(data).T
-            df = df.rename(columns={"5. adjusted close": symbol})
+            df = df.rename(columns={"4. close": symbol})
             df[symbol] = df[symbol].astype(float)
             df.index = pd.to_datetime(df.index)
             return df[[symbol]]
@@ -49,8 +47,7 @@ def fetch_alpha_vantage_data(symbol):
         st.warning(f"Failed to fetch {symbol}: {e}")
         return None
 
-# Combine all valid data
-st.info("📥 Fetching and debugging data from Alpha Vantage...")
+st.info("📥 Fetching from Alpha Vantage (free tier)...")
 valid_tickers = []
 price_data = pd.DataFrame()
 
@@ -74,7 +71,6 @@ mean_returns = returns_df.mean().values
 cov_matrix = returns_df.cov().values
 tickers = list(returns_df.columns)
 
-# Build QUBO
 n = len(tickers)
 Q = {}
 for i in range(n):
