@@ -1,3 +1,4 @@
 streamlit
 dwave-ocean-sdk
 numpy
+python-dotenv

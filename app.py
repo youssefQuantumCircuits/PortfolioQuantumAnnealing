@@ -1,10 +1,20 @@
 import streamlit as st
 import numpy as np
+import os
+from dotenv import load_dotenv
 from dwave.system import DWaveSampler, EmbeddingComposite
 import dimod
 
+# Load API token from .env
+load_dotenv()
+token = os.getenv("DWAVE_API_TOKEN")
+
 st.title("🌌 Quantum Portfolio Optimizer")
 st.write("This app uses a D-Wave quantum annealer to solve a basic portfolio optimization problem over 5 assets.")
+
+if not token:
+    st.error("DWAVE_API_TOKEN not found. Please set it in a .env file.")
+    st.stop()
 
 # Define expected returns and covariances
 returns = np.array([0.12, 0.10, 0.07, 0.03, 0.05])
@@ -30,6 +40,7 @@ for i in range(n):
 
 if st.button("Optimize Portfolio"):
     with st.spinner("Running on D-Wave Quantum Annealer..."):
+        os.environ["DWAVE_API_TOKEN"] = token  # Set token for DWaveSampler
         sampler = EmbeddingComposite(DWaveSampler())
         sampleset = sampler.sample_qubo(Q, num_reads=100)
         best_sample = sampleset.first.sample
