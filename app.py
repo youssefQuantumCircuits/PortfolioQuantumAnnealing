@@ -5,28 +5,27 @@ import investpy
 from datetime import datetime, timedelta
 from dimod import SimulatedAnnealingSampler
 
-st.set_page_config(page_title="📈 investpy Optimizer (Dropdown)", layout="centered")
-st.title("📈 Optimize Portfolio using investpy (Dropdown-Friendly)")
+st.set_page_config(page_title="📈 EGX Portfolio Optimizer", layout="centered")
+st.title("📈 Optimize Egyptian Stocks (EGX) using investpy")
 
-st.markdown("Select valid US stocks from the dropdown list to optimize your portfolio using simulated annealing.")
+st.markdown("This app uses **investpy** to fetch EGX stock data and optimize a portfolio using simulated annealing.")
 
-# Valid investpy US stock names (tested)
-valid_names = [
-    "Apple Inc", "Microsoft Corp", "Amazon.com Inc", "Tesla Inc",
-    "Alphabet A", "Meta Platforms Inc", "Visa Inc",
-    "Coca-Cola Co", "JPMorgan Chase & Co", "NVIDIA Corp"
+# EGX stock names (from investpy.get_stocks(country='egypt'))
+valid_egx_names = [
+    "Commercial International Bank (Egypt)", "Telecom Egypt", "Talaat Moustafa Group",
+    "Ezz Steel", "Eastern Company", "Elsewedy Electric", "Qalaa Holdings",
+    "Palm Hills Developments", "Heliopolis Company for Housing and Development", "Sidi Kerir Petrochemicals"
 ]
 
-# Multi-select dropdown
-selected_stocks = st.multiselect("Select stocks to optimize:", valid_names, default=valid_names[:5])
+selected_stocks = st.multiselect("Select EGX stocks to optimize:", valid_egx_names, default=valid_egx_names[:5])
 top_k = st.slider("Top-k Assets to Select", 2, len(selected_stocks), min(5, len(selected_stocks)))
 risk_aversion = st.slider("Risk Aversion", 0.0, 1.0, 0.5)
 
-# Fetch data
-def fetch_investpy_data(name):
+# Fetch EGX stock data
+def fetch_egx_data(name):
     try:
         df = investpy.get_stock_historical_data(stock=name,
-                                                country='united states',
+                                                country='egypt',
                                                 from_date=(datetime.today() - timedelta(days=180)).strftime('%d/%m/%Y'),
                                                 to_date=datetime.today().strftime('%d/%m/%Y'))
         df = df[['Close']].rename(columns={"Close": name})
@@ -35,12 +34,12 @@ def fetch_investpy_data(name):
         st.warning(f"❌ Could not fetch `{name}`: {e}")
         return None
 
-st.info("📥 Downloading data using investpy...")
+st.info("📥 Downloading EGX data using investpy...")
 price_data = pd.DataFrame()
 valid_selected = []
 
 for name in selected_stocks:
-    df = fetch_investpy_data(name)
+    df = fetch_egx_data(name)
     if df is not None:
         valid_selected.append(name)
         if price_data.empty:
@@ -85,7 +84,7 @@ if st.button("Optimize Portfolio"):
         energy = sampleset.first.energy
 
     st.success("Optimization Complete")
-    st.subheader("📈 Selected Assets:")
+    st.subheader("📈 Selected EGX Stocks:")
     st.write([tickers[i] for i in selected_indices])
     st.write(f"Sample Energy: `{energy:.4f}`")
 
