@@ -25,15 +25,25 @@ end = datetime.today()
 start = end - timedelta(days=180)
 data = yf.download(ticker_list, start=start, end=end)
 
-# Handle multi-index data
-if isinstance(data.columns, pd.MultiIndex):
-    data = data['Adj Close']
-elif 'Adj Close' in data.columns:
-    data = data[['Adj Close']]
-    data.columns = [ticker_list[0]]
+# Robustly extract 'Adj Close'
+try:
+    if isinstance(data.columns, pd.MultiIndex) and 'Adj Close' in data.columns.levels[0]:
+        data = data['Adj Close']
+    elif 'Adj Close' in data.columns:
+        data = data[['Adj Close']]
+        data.columns = [ticker_list[0]]
+    else:
+        st.error("Could not find 'Adj Close' in the data. This may be due to missing or delisted tickers.")
+        st.stop()
+except Exception as e:
+    st.error(f"Error extracting 'Adj Close': {e}")
+    st.stop()
 
-if data.isnull().all().any():
-    st.error("Some tickers failed to download or returned all NaN data.")
+# Drop columns with all NaNs (bad tickers)
+data.dropna(axis=1, how='all', inplace=True)
+
+if data.shape[1] < top_k:
+    st.error(f"Not enough valid tickers returned. Only {data.shape[1]} were found with usable data.")
     st.stop()
 
 # Calculate daily returns and summary stats
