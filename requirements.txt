@@ -3,3 +3,5 @@ dimod
 numpy
 pandas
 yfinance
+seaborn
+matplotlib
