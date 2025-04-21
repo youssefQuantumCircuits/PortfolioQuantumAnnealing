@@ -5,12 +5,11 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from dimod import SimulatedAnnealingSampler
 
-st.set_page_config(page_title="📈 yfinance Portfolio Optimizer", layout="centered")
-st.title("📈 Optimize Portfolio using yfinance (VPN Required)")
+st.set_page_config(page_title="📊 yfinance Debug Portfolio Optimizer", layout="centered")
+st.title("📊 yfinance Portfolio Optimizer (with Debug Info)")
 
-st.markdown("This app uses **yfinance** to fetch stock data (requires VPN in Egypt) and optimizes a portfolio using simulated annealing.")
+st.markdown("Connected via VPN? Paste tickers and debug Yahoo Finance's response if it fails.")
 
-# Example stock tickers
 tickers_input = st.text_area("Enter tickers (comma-separated, e.g., AAPL,MSFT,GOOGL):", "AAPL,MSFT,NVDA,TSLA,GOOGL", height=100)
 tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
 
@@ -21,35 +20,39 @@ if not 2 <= len(tickers) <= 20:
 top_k = st.slider("Top-k Assets to Select", 2, len(tickers), min(5, len(tickers)))
 risk_aversion = st.slider("Risk Aversion", 0.0, 1.0, 0.5)
 
-# Fetch yfinance data
 st.info("📥 Downloading data using yfinance (last 6 months)...")
 end_date = datetime.today()
 start_date = end_date - timedelta(days=180)
 data = yf.download(tickers, start=start_date, end=end_date)
 
+st.subheader("🧪 Raw DataFrame Preview:")
+st.dataframe(data.head())
+
+# Extract Adj Close or fallback
 if isinstance(data.columns, pd.MultiIndex):
     if 'Adj Close' in data.columns.levels[0]:
         data = data['Adj Close']
+        st.success("✅ Found and extracted 'Adj Close' data.")
     else:
-        st.error("❌ Could not find 'Adj Close' in the data.")
+        st.warning("⚠️ 'Adj Close' not found — showing top-level column structure:")
+        st.code(str(data.columns.levels[0]))
         st.stop()
 else:
-    st.error("❌ Failed to download valid yfinance data. Try using a VPN.")
+    st.error("❌ Data structure was not MultiIndex. Please check your VPN or ticker input.")
+    st.dataframe(data.head())
     st.stop()
 
-# Drop invalid tickers
 data.dropna(axis=1, how='all', inplace=True)
 returns_df = data.pct_change().dropna()
 
 if returns_df.empty or len(returns_df.columns) < top_k:
-    st.error("❌ Not enough valid price data to proceed.")
+    st.error("❌ Not enough valid return data.")
     st.stop()
 
 mean_returns = returns_df.mean().values
 cov_matrix = returns_df.cov().values
 tickers = list(returns_df.columns)
 
-# Build QUBO
 n = len(tickers)
 Q = {}
 for i in range(n):
