@@ -6,12 +6,12 @@ from datetime import datetime, timedelta
 from dimod import SimulatedAnnealingSampler
 
 st.set_page_config(page_title="📊 Real-Data Portfolio Optimizer", layout="centered")
-st.title("📊 Optimize Portfolio with Real Market Data")
-st.markdown("This app fetches historical returns of real stocks and uses **simulated annealing** to find an optimal portfolio.")
+st.title("📊 Optimize Portfolio with Real Market Data (Validated)")
+st.markdown("This app validates tickers individually and uses **simulated annealing** to find an optimal portfolio.")
 
-# Settings
-tickers = st.text_area("Enter up to 50 tickers (comma-separated)", "AAPL,MSFT,GOOGL,AMZN,NVDA,TSLA,META,BRK-B,JNJ,V", height=100)
-ticker_list = [ticker.strip().upper() for ticker in tickers.split(",") if ticker.strip()]
+# User input
+tickers_input = st.text_area("Enter up to 50 tickers (comma-separated)", "AAPL,MSFT,GOOGL,AMZN,NVDA,TSLA,META,BRK.B,JNJ,V", height=100)
+ticker_list = [ticker.strip().upper() for ticker in tickers_input.split(",") if ticker.strip()]
 
 if not 5 <= len(ticker_list) <= 50:
     st.warning("Please enter between 5 and 50 tickers.")
@@ -20,39 +20,46 @@ if not 5 <= len(ticker_list) <= 50:
 risk_aversion = st.slider("Risk Aversion", 0.0, 1.0, 0.5)
 top_k = st.slider("Top-k Assets to Select", 5, min(20, len(ticker_list)), 10)
 
-# Fetch historical prices (6 months)
+# Validate tickers individually
+valid_tickers = []
+start = datetime.today() - timedelta(days=180)
 end = datetime.today()
-start = end - timedelta(days=180)
-data = yf.download(ticker_list, start=start, end=end)
 
-# Robustly extract 'Adj Close'
-try:
-    if isinstance(data.columns, pd.MultiIndex) and 'Adj Close' in data.columns.levels[0]:
-        data = data['Adj Close']
-    elif 'Adj Close' in data.columns:
-        data = data[['Adj Close']]
-        data.columns = [ticker_list[0]]
-    else:
-        st.error("Could not find 'Adj Close' in the data. This may be due to missing or delisted tickers.")
-        st.stop()
-except Exception as e:
-    st.error(f"Error extracting 'Adj Close': {e}")
+st.info("✅ Validating tickers...")
+
+for ticker in ticker_list:
+    try:
+        df = yf.download(ticker, start=start, end=end, progress=False)
+        if not df.empty and 'Adj Close' in df.columns:
+            valid_tickers.append(ticker)
+    except Exception:
+        continue
+
+if len(valid_tickers) < top_k:
+    st.error(f"Only {len(valid_tickers)} valid tickers found, which is less than top_k = {top_k}.")
     st.stop()
 
-# Drop columns with all NaNs (bad tickers)
+# Download data in batch
+data = yf.download(valid_tickers, start=start, end=end, progress=False)
+
+# Extract Adjusted Close
+if isinstance(data.columns, pd.MultiIndex) and 'Adj Close' in data.columns.levels[0]:
+    data = data['Adj Close']
+elif 'Adj Close' in data.columns:
+    data = data[['Adj Close']]
+    data.columns = [valid_tickers[0]]
+else:
+    st.error("Could not extract 'Adj Close' from Yahoo Finance data.")
+    st.stop()
+
 data.dropna(axis=1, how='all', inplace=True)
-
-if data.shape[1] < top_k:
-    st.error(f"Not enough valid tickers returned. Only {data.shape[1]} were found with usable data.")
-    st.stop()
-
-# Calculate daily returns and summary stats
 returns_df = data.pct_change().dropna()
+
 mean_returns = returns_df.mean().values
 cov_matrix = returns_df.cov().values
 tickers = list(returns_df.columns)
 
-# Build QUBO
+# QUBO Construction
 n = len(tickers)
 Q = {}
 for i in range(n):
@@ -69,7 +76,6 @@ for i in range(n):
     for j in range(i+1, n):
         Q[(i, j)] += 2 * penalty
 
-# Run optimizer
 if st.button("Optimize Portfolio"):
     with st.spinner("Running simulated annealing..."):
         sampler = SimulatedAnnealingSampler()
@@ -79,7 +85,6 @@ if st.button("Optimize Portfolio"):
         energy = sampleset.first.energy
 
     st.success("Optimization Complete")
-
     st.subheader("📈 Selected Tickers:")
     st.write([tickers[i] for i in selected_indices])
     st.write(f"Sample Energy: `{energy:.4f}`")
