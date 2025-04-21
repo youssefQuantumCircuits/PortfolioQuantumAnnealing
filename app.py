@@ -1,59 +1,49 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import investpy
+import yfinance as yf
 from datetime import datetime, timedelta
 from dimod import SimulatedAnnealingSampler
 
-st.set_page_config(page_title="📈 EGX Portfolio Optimizer", layout="centered")
-st.title("📈 Optimize Egyptian Stocks (EGX) using investpy")
+st.set_page_config(page_title="📈 yfinance Portfolio Optimizer", layout="centered")
+st.title("📈 Optimize Portfolio using yfinance (VPN Required)")
 
-st.markdown("This app uses **investpy** to fetch EGX stock data and optimize a portfolio using simulated annealing.")
+st.markdown("This app uses **yfinance** to fetch stock data (requires VPN in Egypt) and optimizes a portfolio using simulated annealing.")
 
-# EGX stock names (from investpy.get_stocks(country='egypt'))
-valid_egx_names = [
-    "Commercial International Bank (Egypt)", "Telecom Egypt", "Talaat Moustafa Group",
-    "Ezz Steel", "Eastern Company", "Elsewedy Electric", "Qalaa Holdings",
-    "Palm Hills Developments", "Heliopolis Company for Housing and Development", "Sidi Kerir Petrochemicals"
-]
+# Example stock tickers
+tickers_input = st.text_area("Enter tickers (comma-separated, e.g., AAPL,MSFT,GOOGL):", "AAPL,MSFT,NVDA,TSLA,GOOGL", height=100)
+tickers = [t.strip().upper() for t in tickers_input.split(",") if t.strip()]
 
-selected_stocks = st.multiselect("Select EGX stocks to optimize:", valid_egx_names, default=valid_egx_names[:5])
-top_k = st.slider("Top-k Assets to Select", 2, len(selected_stocks), min(5, len(selected_stocks)))
-risk_aversion = st.slider("Risk Aversion", 0.0, 1.0, 0.5)
-
-# Fetch EGX stock data
-def fetch_egx_data(name):
-    try:
-        df = investpy.get_stock_historical_data(stock=name,
-                                                country='egypt',
-                                                from_date=(datetime.today() - timedelta(days=180)).strftime('%d/%m/%Y'),
-                                                to_date=datetime.today().strftime('%d/%m/%Y'))
-        df = df[['Close']].rename(columns={"Close": name})
-        return df
-    except Exception as e:
-        st.warning(f"❌ Could not fetch `{name}`: {e}")
-        return None
-
-st.info("📥 Downloading EGX data using investpy...")
-price_data = pd.DataFrame()
-valid_selected = []
-
-for name in selected_stocks:
-    df = fetch_egx_data(name)
-    if df is not None:
-        valid_selected.append(name)
-        if price_data.empty:
-            price_data = df
-        else:
-            price_data = price_data.join(df, how="outer")
-
-if len(valid_selected) < top_k:
-    st.error(f"Only {len(valid_selected)} valid assets found. This is fewer than top_k = {top_k}.")
+if not 2 <= len(tickers) <= 20:
+    st.warning("Please enter between 2 and 20 tickers.")
     st.stop()
 
-# Process return data
-price_data = price_data.sort_index().dropna()
-returns_df = price_data.pct_change().dropna()
+top_k = st.slider("Top-k Assets to Select", 2, len(tickers), min(5, len(tickers)))
+risk_aversion = st.slider("Risk Aversion", 0.0, 1.0, 0.5)
+
+# Fetch yfinance data
+st.info("📥 Downloading data using yfinance (last 6 months)...")
+end_date = datetime.today()
+start_date = end_date - timedelta(days=180)
+data = yf.download(tickers, start=start_date, end=end_date)
+
+if isinstance(data.columns, pd.MultiIndex):
+    if 'Adj Close' in data.columns.levels[0]:
+        data = data['Adj Close']
+    else:
+        st.error("❌ Could not find 'Adj Close' in the data.")
+        st.stop()
+else:
+    st.error("❌ Failed to download valid yfinance data. Try using a VPN.")
+    st.stop()
+
+# Drop invalid tickers
+data.dropna(axis=1, how='all', inplace=True)
+returns_df = data.pct_change().dropna()
+
+if returns_df.empty or len(returns_df.columns) < top_k:
+    st.error("❌ Not enough valid price data to proceed.")
+    st.stop()
 
 mean_returns = returns_df.mean().values
 cov_matrix = returns_df.cov().values
@@ -84,7 +74,7 @@ if st.button("Optimize Portfolio"):
         energy = sampleset.first.energy
 
     st.success("Optimization Complete")
-    st.subheader("📈 Selected EGX Stocks:")
+    st.subheader("📈 Selected Tickers:")
     st.write([tickers[i] for i in selected_indices])
     st.write(f"Sample Energy: `{energy:.4f}`")
 
