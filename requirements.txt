@@ -1,4 +1,5 @@
 streamlit
 dimod
 numpy
-yfinance
+pandas
+requests
